@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
+п»їusing Microsoft.AspNetCore.Mvc;
 using App.Shared.Models;
+using App.WebApi.Repositories;
 
 namespace App.WebApi.Controllers;
 
@@ -7,45 +8,78 @@ namespace App.WebApi.Controllers;
 [Route("api/[controller]")]
 public class ProductsController : ControllerBase
 {
-    // Тестовые данные прямо в коде (без БД!)
-    private static List<Product> _products = new()
+    private readonly ProductRepository _repository;
+    
+    public ProductsController()
     {
-        new() { Id = 1, Name = "Nike Air Max", Count = 25, Price = 8990, CategoryId = 1, CategoryName = "Кроссовки", Provider = "Nike", Brand = "Nike", Discount = 15, Unit = "пара" },
-        new() { Id = 2, Name = "Adidas Ultraboost", Count = 12, Price = 12990, CategoryId = 1, CategoryName = "Кроссовки", Provider = "Adidas", Brand = "Adidas", Discount = 10, Unit = "пара" },
-        new() { Id = 3, Name = "Columbia Winter Boot", Count = 8, Price = 7990, CategoryId = 2, CategoryName = "Ботинки", Provider = "Columbia", Brand = "Columbia", Discount = 0, Unit = "пара" },
-        new() { Id = 4, Name = "ECCO Classic", Count = 0, Price = 9990, CategoryId = 3, CategoryName = "Туфли", Provider = "ECCO", Brand = "ECCO", Discount = 5, Unit = "пара" },
-        new() { Id = 5, Name = "Puma Summer", Count = 30, Price = 2490, CategoryId = 4, CategoryName = "Сандалии", Provider = "Puma", Brand = "Puma", Discount = 20, Unit = "пара" }
-    };
-
-    [HttpGet]
-    public ActionResult<List<Product>> GetAll()
-    {
-        return Ok(_products);
+        _repository = new ProductRepository();
     }
-
-    [HttpGet("{id}")]
-    public ActionResult<Product> GetById(int id)
+    
+    [HttpGet]
+    public async Task<ActionResult<List<Product>>> GetAll()
     {
-        var product = _products.FirstOrDefault(p => p.Id == id);
+        var products = await _repository.GetAllAsync();
+        return Ok(products);
+    }
+    
+    [HttpGet("{id}")]
+    public async Task<ActionResult<Product>> GetById(int id)
+    {
+        var product = await _repository.GetByIdAsync(id);
         if (product == null)
-            return NotFound(new { message = $"Товар с ID {id} не найден" });
+            return NotFound();
         return Ok(product);
     }
-
-    [HttpGet("categories")]
-    public ActionResult<object> GetCategories()
+    
+    [HttpPost]
+    public async Task<ActionResult<int>> AddProduct([FromBody] Product product)
     {
-        var categories = _products
-            .Select(p => new { Id = p.CategoryId, Name = p.CategoryName })
-            .Distinct()
-            .ToList();
-        return Ok(categories);
+        var id = await _repository.AddAsync(product);
+        return Ok(id);
     }
-
-    [HttpGet("providers")]
-    public ActionResult<List<string>> GetProviders()
+    
+    [HttpPut("{id}")]
+    public async Task<ActionResult> UpdateProduct(int id, [FromBody] Product product)
     {
-        var providers = _products.Select(p => p.Provider).Distinct().ToList();
+        if (id != product.Id)
+            return BadRequest();
+        
+        var existing = await _repository.GetByIdAsync(id);
+        if (existing == null)
+            return NotFound();
+        
+        await _repository.UpdateAsync(product);
+        return Ok();
+    }
+    
+    [HttpDelete("{id}")]
+    public async Task<ActionResult> DeleteProduct(int id)
+    {
+        var existing = await _repository.GetByIdAsync(id);
+        if (existing == null)
+            return NotFound();
+        
+        await _repository.DeleteAsync(id);
+        return Ok();
+    }
+    
+    [HttpGet("providers")]
+    public async Task<ActionResult<List<string>>> GetProviders()
+    {
+        var providers = await _repository.GetAllProvidersAsync();
         return Ok(providers);
     }
+    
+    [HttpGet("categories")]
+    public async Task<ActionResult<List<CategoryDto>>> GetCategories()
+    {
+        var categories = await _repository.GetAllCategoriesAsync();
+        return Ok(categories);
+    }
+}
+
+public class CategoryDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
 }

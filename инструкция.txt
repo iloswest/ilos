@@ -1,0 +1,360 @@
+1. КАК РАБОТАЕТ СИСТЕМА (1 минута)
+
+Клиент (WPF) отправляет HTTP-запросы к серверу (Web API). 
+Сервер обрабатывает запросы, взаимодействует с базой данных через репозитории (Repository Pattern). 
+Данные передаются в формате JSON. Вся логика разделена на три уровня: 
+Presentation (UI), Business Logic (Web API) и Data Access (Repository + SQLite).
+
+2. КЛЮЧЕВЫЕ ТЕРМИНЫ ДЛЯ ПРЕПОДАВАТЕЛЯ
+Термин		Что означает
+REST API	Способ обмена данными через HTTP  (GET, POST, PUT, DELETE)
+JSON		Формат передачи данных 		  (легкий, читаемый)
+Repository	Паттерн для работы с базой данных (отделяет SQL от бизнес-логики)
+CRUD		Create, Read, Update, Delete — основные операции с данными
+MVVM		Model-View-ViewModel — паттерн для разделения логики и UI
+DTO		Data Transfer Object — объекты для передачи данных между слоями
+
+3. ГЛАВНАЯ СХЕМА
+
+Пользователь → WPF UI → HTTP запрос → Web API → Репозиторий → SQLite
+                                                              ↓
+Пользователь ← WPF UI ← HTTP ответ ← Web API ← Репозиторий ← SQLite
+
+
+┌─────────────────────────────────────────────────────────────────┐
+│                      УРОВЕНЬ ПРЕДСТАВЛЕНИЯ                      │
+│                         (WPF + MVVM)                            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTP/JSON
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      УРОВЕНЬ БИЗНЕС-ЛОГИКИ                      │
+│                       (ASP.NET Web API)                         │
+└──────────────────────────┬──────────────────────────────────────┘
+			   │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      УРОВЕНЬ ДОСТУПА К ДАННЫМ                   │
+│                    (Repository + ADO.NET)                       │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ SQL
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                           SQLite                                │
+└─────────────────────────────────────────────────────────────────┘
+
+4. СТРУКТУРА ПРОЕКТА
+
+App/
+├── App.Shared/                    # Общие модели (DTO)
+│   └── Models/
+│       ├── Product.cs             # Модель товара
+│       ├── User.cs                # Модель пользователя
+│       ├── Order.cs               # Модель заказа
+│       └── CartItem.cs            # Модель позиции в корзине
+│
+├── App.WebApi/                    # Сервер (ASP.NET Core)
+│   ├── Controllers/
+│   │   ├── AuthController.cs      # Авторизация
+│   │   ├── ProductsController.cs  # Товары
+│   │   └── OrdersController.cs    # Заказы
+│   ├── Data/
+│   │   └── DatabaseHelper.cs      # Подключение к SQLite
+│   ├── Repositories/
+│   │   ├── ProductRepository.cs   # Доступ к товарам
+│   │   └── OrderRepository.cs     # Доступ к заказам
+│   ├── Program.cs                 # Настройка сервера
+│   └── appsettings.json           # Конфигурация
+│
+└── App.UI/                        # Клиент (WPF)
+    ├── Converters/                # XAML-конвертеры
+    │   ├── BoolToVisibilityConverter.cs
+    │   └── NullToVisibilityConverter.cs
+    ├── MainWindow.xaml            # Главное окно
+    ├── MainWindow.xaml.cs         # Логика главного окна
+    ├── CartWindow.xaml            # Корзина
+    ├── CartWindow.xaml.cs         # Логика корзины
+    ├── ProductEditWindow.xaml     # Редактирование товара
+    ├── ProductEditWindow.xaml.cs  # Логика редактирования
+    ├── App.xaml                   # Стили и ресурсы
+    └── App.xaml.cs                # Точка входа
+
+5.КАК РАБОТАЕТ АВТОРИЗАЦИЯ
+Клиент (MainWindow.xaml.cs)
+
+// 1. Пользователь вводит логин и пароль
+// 2. Нажимает кнопку "Войти"
+
+private async void LoginButton_Click(object sender, RoutedEventArgs e)
+{
+    // 3. Создаем запрос с данными
+    var request = new LoginRequest 
+    { 
+        Login = LoginBox.Text,        // "admin"
+        Password = PasswordBox.Password // "123"
+    };
+    
+    // 4. Отправляем POST-запрос на сервер
+    var response = await _httpClient.PostAsJsonAsync(
+        "http://localhost:5271/api/auth/login", 
+        request
+    );
+    
+    // 5. Получаем ответ
+    var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+    
+    // 6. Если успешно - сохраняем пользователя
+    if (result?.Success == true)
+    {
+        _currentUser = result.User;   // { Id: 1, Login: "admin", Role: "admin" }
+        UserInfo.Text = $"Добро пожаловать, {_currentUser.Name}";
+        UpdateUIBasedOnRole();        // Показываем кнопки для админа
+    }
+}
+
+
+Сервер (AuthController.cs)
+[HttpPost("login")]
+public ActionResult<LoginResponse> Login([FromBody] LoginRequest request)
+{
+    // 1. Проверяем логин и пароль
+    if (request.Login == "admin" && request.Password == "123")
+    {
+        // 2. Создаем ответ с пользователем
+        return Ok(new LoginResponse
+        {
+            Success = true,
+            Message = "Вход выполнен",
+            User = new User 
+            { 
+                Id = 1, 
+                Login = "admin", 
+                Name = "Администратор", 
+                Role = "admin"   // ← Роль определяет, что видит пользователь
+            }
+        });
+    }
+    
+    // 3. Неверный логин или пароль
+    return Ok(new LoginResponse
+    {
+        Success = false,
+        Message = "Неверный логин или пароль"
+    });
+}
+
+6. КАК РАБОТАЕТ ЗАГРУЗКА ТОВАРОВ
+Клиент (MainWindow.xaml.cs)
+
+private async Task LoadProducts()
+{
+    // 1. Отправляем GET-запрос на сервер
+    _allProducts = await _httpClient.GetFromJsonAsync<List<Product>>(
+        "http://localhost:5271/api/products"
+    );
+    
+    // 2. Получаем JSON и преобразуем в список объектов Product
+    // 3. Отображаем в UI (Data Binding автоматически создает карточки)
+    ProductsList.ItemsSource = _allProducts;
+}
+
+
+Сервер (ProductsController.cs)
+[HttpGet]
+public async Task<ActionResult<List<Product>>> GetAll()
+{
+    // 1. Вызываем репозиторий для получения данных из БД
+    var products = await _repository.GetAllAsync();
+    
+    // 2. Возвращаем JSON
+    return Ok(products);
+}
+
+Репозиторий (ProductRepository.cs)
+public async Task<List<Product>> GetAllAsync()
+{
+    var products = new List<Product>();
+    
+    // 1. Открываем подключение к SQLite
+    using var connection = DatabaseHelper.GetConnection();
+    await connection.OpenAsync();
+    
+    // 2. Выполняем SQL-запрос
+    var query = "SELECT * FROM Products";
+    using var command = new SqliteCommand(query, connection);
+    using var reader = await command.ExecuteReaderAsync();
+    
+    // 3. Преобразуем строки БД в объекты C#
+    while (await reader.ReadAsync())
+    {
+        products.Add(new Product
+        {
+            Id = Convert.ToInt32(reader["Id"]),          // 1
+            Name = reader["Name"].ToString(),            // "Nike Air Max"
+            Price = Convert.ToDecimal(reader["Price"]),   // 8990
+            Discount = Convert.ToDecimal(reader["Discount"]) // 15
+        });
+    }
+    
+    // 4. Возвращаем список
+    return products;
+}
+
+
+7.КАК РАБОТАЕТ КОРЗИНА
+
+Добавление в корзину (MainWindow.xaml.cs)
+private void AddToCart_Click(object sender, RoutedEventArgs e)
+{
+    // 1. Получаем товар из кнопки
+    var btn = sender as Button;
+    var product = btn?.Tag as Product;  // Tag = { Id: 1, Name: "Nike Air Max" }
+    
+    // 2. Проверяем, есть ли уже этот товар в корзине
+    var existing = _cartItems.FirstOrDefault(i => i.Product.Id == product.Id);
+    
+    if (existing != null)
+    {
+    // 3. Товар уже есть → увеличиваем количество
+        existing.Quantity++;
+    }
+    else
+    {
+    // 4. Товара нет → добавляем новый
+        _cartItems.Add(new CartItem { Product = product, Quantity = 1 });
+    }
+    
+    // 5. ObservableCollection      	//автоматически обновляет UI
+}
+
+Оформление заказа (CartWindow.xaml.cs)
+private async Task Checkout()
+{
+    // 1. Формируем запрос на сервер
+    var request = new CreateOrderRequest
+    {
+        UserId = _currentUser.Id,  // 1
+        Items = _cartItems.Select(item => new OrderItemRequest
+        {
+            ProductId = item.Product.Id,  // 1
+            Quantity = item.Quantity      // 2
+        }).ToList()
+    };
+    
+    // 2. Отправляем POST-запрос
+    var response = await _httpClient.PostAsJsonAsync(
+        "http://localhost:5271/api/orders", 
+        request
+    );
+    
+    if (response.IsSuccessStatusCode)
+    {
+        _cartItems.Clear();          // Очищаем корзину
+        MessageBox.Show("Заказ оформлен!");
+    }
+    else
+    {
+        var error = await response.Content.ReadAsStringAsync();
+        MessageBox.Show($"Ошибка: {error}");  // "Товара недостаточно!"
+    }
+}
+
+
+Сервер (OrderRepository.cs)
+public async Task<(bool Success, string Message, int OrderId)> CreateOrderAsync(CreateOrderRequest request)
+{
+    using var connection = DatabaseHelper.GetConnection();
+    await connection.OpenAsync();
+    using var transaction = connection.BeginTransaction();
+    
+    // 1. Проверяем остатки по каждому товару
+    foreach (var item in request.Items)
+    {
+        var stock = GetStock(item.ProductId);  // 25
+        if (stock < item.Quantity)             // 25 < 30 → ошибка!
+        {
+            await transaction.RollbackAsync();
+            return (false, $"Товара недостаточно! В наличии: {stock}", 0);
+        }
+    }
+    
+    // 2. Создаем заказ
+    var orderId = CreateOrder(request.UserId, totalCost);
+    
+    // 3. Обновляем остатки
+    foreach (var item in request.Items)
+    {
+        UpdateStock(item.ProductId, item.Quantity);  // 25 - 2 = 23
+        AddOrderItem(orderId, item);
+    }
+    
+    transaction.Commit();
+    return (true, "Заказ оформлен!", orderId);
+}
+
+8.КАК РАБОТАЕТ ФИЛЬТРАЦИЯ
+UI (MainWindow.xaml)
+<!-- При изменении текста вызывается ApplyFilters -->
+<TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged" />
+
+Код (MainWindow.xaml.cs)
+private void ApplyFilters()
+{
+    // 1. Берем все товары
+    var filtered = _allProducts.AsEnumerable();
+    
+    // 2. Поиск по тексту
+    var search = SearchBox.Text?.ToLower();
+    if (!string.IsNullOrWhiteSpace(search))
+    {
+        filtered = filtered.Where(p => 
+            p.Name.ToLower().Contains(search) ||      // "Nike" в "Nike Air Max"
+            p.Brand.ToLower().Contains(search) ||     // "Adidas" в "Adidas"
+            p.CategoryName.ToLower().Contains(search) // "Кроссовки" в "Кроссовки"
+        );
+    }
+    
+    // 3. Фильтр по поставщику
+    if (ProviderFilter.SelectedIndex > 0)
+    {
+        filtered = filtered.Where(p => 
+            p.Provider == ProviderFilter.SelectedItem?.ToString()
+        );
+    }
+    
+    // 4. Сортировка
+    switch (SortByCombo.SelectedIndex)
+    {
+        case 1: filtered = filtered.OrderBy(p => p.Count); break;
+        case 2: filtered = filtered.OrderByDescending(p => p.Count); break;
+        case 3: filtered = filtered.OrderBy(p => p.Price); break;
+        case 4: filtered = filtered.OrderByDescending(p => p.Price); break;
+    }
+    
+    // 5. Обновляем UI
+    ProductsList.ItemsSource = filtered.ToList();
+}
+
+
+9. КЛЮЧЕВЫЕ МЕХАНИЗМЫ
+Механизм	Описание						Где используется
+Data Binding	Автоматическая связь UI и данных			XAML {Binding Name}
+Async/Await	Асинхронные запросы без зависания UI			await _httpClient.GetAsync()
+HttpClient	Отправка HTTP-запросов					PostAsJsonAsync, GetFromJsonAsync
+Repository	Работа с БД						ProductRepository, OrderRepository
+LINQ		Фильтрация и сортировка данных				.Where(), .OrderBy()
+ObservableCollection	Автообновление UI при изменении коллекции	_cartItems
+
+
+10. ДОБАВЛЕНИЕ ФОТО ЧЕРЕЗ БД
+
+-- Добавить фото для существующего товара
+UPDATE Products SET Photo = '/Images/my_shoe.jpg' WHERE Id = 1;
+
+-- Добавить фото при создании нового товара
+INSERT INTO Products (Name, Count, Price, Photo, ...) VALUES 
+('New Shoe', 10, 5000, '/Images/new_shoe.jpg', ...);
+
+-- Проверить
+SELECT Id, Name, Photo FROM Products;
+.quit

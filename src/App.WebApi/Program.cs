@@ -1,26 +1,19 @@
+п»їusing App.WebApi.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Добавляем контроллеры
 builder.Services.AddControllers();
-
-// Настройка CORS для доступа из WPF приложения
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-});
+builder.Services.AddCors();
 
 var app = builder.Build();
 
-// Используем CORS
-app.UseCors("AllowAll");
+// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ Р±Р°Р·С‹ РґР°РЅРЅС‹С…
+DatabaseHelper.InitializeDatabase();
 
-// Добавляем маршрутизацию
+// РќРђРЎРўР РћР™РљРђ РЎРўРђРўРР§Р•РЎРљРРҐ Р¤РђР™Р›РћР’ (РґР»СЏ РёР·РѕР±СЂР°Р¶РµРЅРёР№)
+app.UseStaticFiles();
+
+app.UseCors(x => x.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 app.MapControllers();
 
-// Запускаем
 app.Run();
